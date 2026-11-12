@@ -47,110 +47,125 @@ browser-based experience.
 
 ## System architecture
 
-The diagram follows a user action from the React interface through the local
-astronomy pipeline and, where applicable, the Express API to public services. Solid
-paths represent the primary runtime flow; the dashed path is the explicit
-demonstration/reference fallback.
+AFTERLIGHT has two separate execution paths: **local analysis in the browser** and
+**optional archive requests through the server**. The first diagram shows the main
+application layers; the second isolates the API integrations and their fallbacks.
+
+```mermaid
+flowchart TB
+  observer(["Observer"])
+
+  subgraph browser["BROWSER · React application"]
+    direction TB
+    app["App.tsx<br/>Route + active target / sky region"]
+    pages["Pages<br/>Home · Explorer · Observations<br/>Object detail · Discoveries · About"]
+    tools["Interactive tools<br/>Sky viewer · Time Machine · Image comparison<br/>102-band explorer · Discovery Radar · IRSA tutorial"]
+    app --> pages --> tools
+  end
+
+  subgraph local["LOCAL · Runs in the browser"]
+    direction LR
+    reference["Reference inputs<br/>Curated targets + epochs<br/>SPHEREx band / SED model"]
+    coordinates["Coordinate utilities<br/>Parse / format · proper motion<br/>sky-to-pixel transforms"]
+    renderer["Sky renderer<br/>Synthetic epoch frames<br/>PSF · noise · infrared color mapping"]
+    analysis["Analysis tools<br/>Blink / difference views<br/>Source matching + candidate ranking"]
+    output["Canvas + results<br/>Coordinates · spectra · candidate list"]
+    reference --> renderer
+    coordinates --> renderer
+    renderer --> analysis --> output
+  end
+
+  subgraph service["SERVER · Node.js + Express · server.ts"]
+    direction LR
+    api["Same-origin /api/archive/* routes<br/>Timeout-bounded public-service proxies"]
+    host["App hosting<br/>Vite middleware in development<br/>dist/ static files in production"]
+  end
+
+  archives["OPTIONAL PUBLIC SERVICES<br/>CDS Sesame · CDS HiPS2FITS<br/>NASA/IPAC IRSA TAP"]
+  fallback["LOCAL DEMO / REFERENCE FALLBACK<br/>Synthetic FITS · M101 tutorial records<br/>Explicitly labeled when used"]
+
+  observer --> app
+  tools -->|"select region / epoch / band"| renderer
+  tools -->|"optional fetch requests"| api
+  api --> archives
+  api -. "when an upstream is unavailable" .-> fallback
+  host -. "serves the browser app" .-> app
+  output -->|"drawn in the active panel"| tools
+
+  classDef actor fill:#0b3d91,color:#ffffff,stroke:#07295f,stroke-width:2px
+  classDef browser fill:#eaf2ff,color:#142d4e,stroke:#4d7fb8,stroke-width:1.5px
+  classDef local fill:#e9f8f5,color:#123d36,stroke:#348b79,stroke-width:1.5px
+  classDef server fill:#fff3df,color:#4b3310,stroke:#cc8b21,stroke-width:1.5px
+  classDef external fill:#fcebf0,color:#4c2030,stroke:#b75d78,stroke-width:1.5px
+  class observer actor
+  class app,pages,tools browser
+  class reference,coordinates,renderer,analysis,output local
+  class api,host,fallback server
+  class archives external
+```
+
+### Archive request paths
+
+Each arrow below is one independent request path. The browser calls the local API;
+only the server calls public services. The dashed M101 path is a demonstration
+fallback, not a live SPHEREx result.
 
 ```mermaid
 flowchart LR
-  visitor(["Observer / learner"])
+  browser["Browser tools"]
 
-  subgraph browser["1 · Browser experience"]
+  subgraph routes["EXPRESS · server.ts"]
     direction TB
-    entry["src/main.tsx<br/>React entry + global styles"]
-    app["src/App.tsx<br/>in-memory route + selected target / region"]
-    routes["Pages<br/>Home · Explorer · Observations<br/>Object detail · Discoveries · About"]
-    ui["Instrument components<br/>SkyCanvasViewer · TimeMachinePanel<br/>ImageComparisonPanel · WavelengthExplorerPanel<br/>DiscoveryRadarPanel · SpherexTutorialPanel"]
-    entry --> app --> routes --> ui
+    resolve["/api/archive/resolve"]
+    cutout["/api/archive/cutout"]
+    wise["/api/archive/irsa-catalog"]
+    spherex["/api/archive/spherex-cutouts"]
+    fits["/api/archive/fits-export"]
+    health["/api/health"]
   end
 
-  subgraph science["2 · Client-side astronomy & rendering"]
+  subgraph upstreams["UPSTREAM / RESULT"]
     direction TB
-    coords["lib/astronomy.ts<br/>RA/Dec parsing + formatting<br/>proper motion · angular separation<br/>TAN-style pixel / sky transforms"]
-    targets["data/objects.ts<br/>curated targets + epoch metadata<br/>target search + reference field"]
-    bands["lib/spherex.ts<br/>six arrays · 102 bands<br/>reference SED model"]
-    renderer["lib/skyRenderer.ts<br/>coordinate-seeded field<br/>synthetic PSFs + epoch / band response<br/>asinh stretch + infrared color mapping"]
-    compare["Image comparison<br/>side-by-side · blink · B − A residual"]
-    detector["lib/detection.ts<br/>background / noise estimate<br/>local peaks + weighted centroids<br/>static matches + candidate ranking"]
-    coords --> renderer
-    targets --> renderer
-    bands --> renderer
-    renderer --> ui
-    renderer --> compare
-    renderer -->|"two epoch buffers"| detector
-    coords --> detector
-    detector --> ui
+    sesame["Coordinate parser<br/>then CDS Sesame for names"]
+    hips["CDS HiPS2FITS<br/>AllWISE · 2MASS · DSS2"]
+    irsaWise["NASA/IPAC IRSA TAP<br/>AllWISE catalog"]
+    irsaSpherex["NASA/IPAC IRSA TAP<br/>SPHEREx artifact + plane metadata"]
+    ibe["NASA/IPAC IRSA IBE<br/>FITS links in returned metadata"]
+    fitsDemo["Generated 128 × 128 FITS<br/>demonstration field"]
+    localResponse["Local health response"]
+    m101["Bundled M101 tutorial references<br/>DR1 / QR3 cutout URIs"]
   end
 
-  subgraph api["3 · Same-origin Express API · server.ts"]
-    direction TB
-    health["GET /api/health"]
-    resolve["GET /api/archive/resolve<br/>parse coordinates or query CDS Sesame"]
-    cutout["GET /api/archive/cutout<br/>proxy allow-listed HiPS2FITS survey"]
-    wise["GET /api/archive/irsa-catalog<br/>AllWISE cone-search TAP"]
-    spherex["GET /api/archive/spherex-cutouts<br/>SPHEREx artifact / plane TAP"]
-    fits["GET /api/archive/fits-export<br/>128 × 128 float32 demonstration FITS"]
-    serverStatic["Development: Vite middleware<br/>Production: static dist + SPA fallback"]
-  end
+  browser -->|"HTTP request"| resolve
+  browser -->|"HTTP request"| cutout
+  browser -->|"HTTP request"| wise
+  browser -->|"HTTP request"| spherex
+  browser -->|"download request"| fits
+  browser -->|"HTTP request"| health
 
-  subgraph data["4 · Local reference data"]
-    direction TB
-    epochData["Curated target and epoch metadata<br/>WISE / NEOWISE reference epochs<br/>modeled SPHEREx epochs"]
-    m101["IRSA SPHEREx tutorial reference<br/>M101 DR1 / QR3 cutout URIs<br/>17 listed records: 12 DR1 + 5 QR3"]
-    spectral["SPHEREx instrument reference<br/>102 modeled channels · six arrays<br/>reference—not live—spectra"]
-  end
-
-  subgraph external["5 · Optional public services"]
-    direction TB
-    sesame["CDS Sesame<br/>name resolution"]
-    hips["CDS HiPS2FITS<br/>AllWISE · 2MASS · DSS2 survey plates"]
-    irsa["NASA/IPAC IRSA TAP<br/>AllWISE catalog · SPHEREx cutout metadata"]
-    ibe["NASA/IPAC IRSA IBE<br/>linked SPHEREx Level-2 FITS cutout URIs"]
-  end
-
-  visitor --> entry
-  ui -->|"same-origin fetch"| resolve
-  ui -->|"archive overlay"| cutout
-  ui -->|"catalog / cutout metadata"| wise
-  ui -->|"catalog / cutout metadata"| spherex
-  ui -->|"download link"| fits
-  routes --> epochData
-  routes --> m101
-  ui --> spectral
-  resolve -->|"when query is not coordinates"| sesame
+  resolve --> sesame
   cutout --> hips
-  wise --> irsa
-  spherex --> irsa
-  m101 -.->|"reference fallback when TAP is unavailable<br/>and field is near M101"| spherex
-  spherex -->|"returned record links"| ibe
+  wise --> irsaWise
+  spherex --> irsaSpherex --> ibe
+  fits --> fitsDemo
+  health --> localResponse
+  m101 -. "TAP unavailable + target near M101" .-> spherex
 
-  classDef actor fill:#0b3d91,color:#ffffff,stroke:#07295f,stroke-width:2px
-  classDef frontend fill:#eaf2ff,color:#142d4e,stroke:#4d7fb8,stroke-width:1.5px
-  classDef science fill:#e9f8f5,color:#123d36,stroke:#348b79,stroke-width:1.5px
-  classDef api fill:#fff3df,color:#4b3310,stroke:#cc8b21,stroke-width:1.5px
-  classDef data fill:#f1edff,color:#30254d,stroke:#8066b3,stroke-width:1.5px
-  classDef external fill:#fcebf0,color:#4c2030,stroke:#b75d78,stroke-width:1.5px
-  class visitor actor
-  class entry,app,routes,ui frontend
-  class coords,targets,bands,renderer,compare,detector science
-  class health,resolve,cutout,wise,spherex,fits,serverStatic api
-  class epochData,m101,spectral data
-  class sesame,hips,irsa,ibe external
+  classDef client fill:#eaf2ff,color:#142d4e,stroke:#4d7fb8,stroke-width:1.5px
+  classDef route fill:#fff3df,color:#4b3310,stroke:#cc8b21,stroke-width:1.5px
+  classDef service fill:#fcebf0,color:#4c2030,stroke:#b75d78,stroke-width:1.5px
+  classDef demo fill:#e9f8f5,color:#123d36,stroke:#348b79,stroke-width:1.5px
+  class browser client
+  class resolve,cutout,wise,spherex,fits,health route
+  class sesame,hips,irsaWise,irsaSpherex,ibe service
+  class fitsDemo,localResponse,m101 demo
 ```
 
-### Runtime flow
-
-1. The React app keeps route, target, region, selected epoch, and active band in
-   component state; it does not use a client-side router or a database.
-2. The browser builds a deterministic float sky buffer from the selected target,
-   epoch, and band. Canvas rendering, epoch comparison, and candidate extraction
-   happen locally.
-3. Optional live archive actions go to the same-origin Express endpoints. The
-   server makes bounded-time requests to public services and returns normalized
-   results or a clearly labeled fallback.
-4. Production mode serves Vite's `dist` output from Express; development mode
-   mounts Vite's middleware on that same server.
+The React app keeps navigation and selection state in memory (no client-side router
+or database). Sky rendering, epoch comparisons, and candidate extraction run locally;
+network access is only needed for name resolution and optional archive queries.
+Development serves the app through Vite middleware, while production serves the
+built `dist/` files from Express.
 
 ## Science and analysis features
 
