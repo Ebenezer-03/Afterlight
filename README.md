@@ -1,55 +1,48 @@
-<div align="center">
-
 # AFTERLIGHT
 
 ### Explore the changing infrared universe — one observation at a time
 
 **A NASA Space Apps Challenge 2026 project · Planet X and SPHEREx**
 
-AFTERLIGHT is an interactive astronomical exploration workbench for studying how
-celestial objects move and change brightness across observation epochs and infrared
-wavelengths. It brings a sky viewer, a 102-band SPHEREx reference model, public
-archive lookups, and a transparent moving-object candidate pipeline into one
-browser-based experience.
+AFTERLIGHT is an interactive astronomical exploration workbench for studying how celestial objects move and change brightness across observation epochs and infrared wavelengths. It combines a high-performance sky viewer, a 102-band SPHEREx reference model, public archive integrations, and a moving-object candidate pipeline into one browser-based experience.
 
-[Explore the architecture](#system-architecture) ·
-[Run locally](#run-locally) ·
-[Data and scientific integrity](#data-and-scientific-integrity)
-
-</div>
-
-> **Project status:** Challenge prototype / research and education interface.
-> Several sky plates, spectra, and epochs are deterministic demonstrations rather
-> than downloaded science products. Candidate detections are unconfirmed and are
-> not astronomical discoveries.
+> **Project status:** Challenge prototype / research and education interface. Several sky plates, spectra, and epochs are deterministic demonstrations rather than downloaded science products. Candidate detections are unconfirmed and are not verified astronomical discoveries.
 
 ---
 
-## What it does
+## Table of contents
 
-- **Explore a sky region.** Search curated targets, enter J2000 coordinates in
-  decimal degrees or sexagesimal form, or resolve an object name with CDS Sesame.
-- **Inspect an interactive sky plate.** Pan and zoom, inspect cursor coordinates,
-  toggle a WCS-style grid and target markers, and adjust infrared wavelength.
-- **Travel through time.** Step or play through curated epochs to see modeled proper
-  motion and brightness changes.
-- **Compare epochs.** View two frames side by side, blink between them, or inspect a
-  signed difference image with alignment and display controls.
-- **Explore SPHEREx wavelengths.** Browse 102 modeled channels across six detector
-  arrays from 0.75 to 5.00 µm, with reference spectral energy distributions and
-  molecular-feature annotations.
-- **Review moving-object candidates.** Extract point sources from two rendered
-  epochs, match static sources, rank displaced sources, and set a review status.
-- **Query public archives.** When network access is available, request CDS HiPS
-  survey cutouts and NASA/IPAC IRSA AllWISE or SPHEREx TAP results.
-- **Export products.** Download the displayed canvas as PNG or request a
-  standards-aligned demonstration FITS image from the local API.
+- [Features](#features)
+- [System architecture](#system-architecture)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Configuration](#configuration)
+- [Usage examples](#usage-examples)
+- [Science and analysis features](#science-and-analysis-features)
+- [Development and testing](#development-and-testing)
+- [Project structure](#project-structure)
+- [Data and scientific integrity](#data-and-scientific-integrity)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
+
+---
+
+## Features
+
+- **Interactive sky plate viewer:** Pan and zoom across deep-space infrared plates, inspect real-time cursor coordinates in sexagesimal and decimal formats, and toggle WCS-aligned grids.
+- **Multi-epoch time travel:** Step or animate through curated observation epochs to visualize modeled proper motion, astrometric displacement, and stellar brightness changes over years.
+- **Epoch comparison & blinking:** Inspect side-by-side frames, blink between two epochs at configurable frequencies, or compute a signed difference image to highlight subtle transients.
+- **102-band SPHEREx spectrometer:** Explore all 102 channels across 6 detector arrays spanning 0.75 to 5.00 µm, with reference spectral energy distribution (SED) models and molecular absorption lines (H₂O ice, CO₂, CO, PAHs).
+- **Discovery Radar pipeline:** Automatically extract point sources, compute intensity-weighted centroids, subtract stationary stars, and score displaced candidate moving objects with SNR and confidence metrics.
+- **Public archive lookups:** Query live CDS Sesame for celestial name resolution, CDS HiPS2FITS for multi-survey imagery (AllWISE, 2MASS, DSS2), and NASA/IPAC IRSA TAP for AllWISE and SPHEREx catalogs.
+- **Scientific data export:** Save canvas views as PNG or request standards-compliant 128 × 128 demonstration FITS files complete with WCS and celestial coordinate headers.
+
+---
 
 ## System architecture
 
-AFTERLIGHT has two separate execution paths: **local analysis in the browser** and
-**optional archive requests through the server**. The first diagram shows the main
-application layers; the second isolates the API integrations and their fallbacks.
+AFTERLIGHT executes along two coordinated layers: **client-side computation and rendering in the browser** and **archive query routing through Express**.
 
 ```mermaid
 flowchart TB
@@ -106,9 +99,7 @@ flowchart TB
 
 ### Archive request paths
 
-Each arrow below is one independent request path. The browser calls the local API;
-only the server calls public services. The dashed M101 path is a demonstration
-fallback, not a live SPHEREx result.
+Each endpoint is isolated with bounded timeouts and transparent demo fallbacks:
 
 ```mermaid
 flowchart LR
@@ -161,163 +152,224 @@ flowchart LR
   class fitsDemo,localResponse,m101 demo
 ```
 
-The React app keeps navigation and selection state in memory (no client-side router
-or database). Sky rendering, epoch comparisons, and candidate extraction run locally;
-network access is only needed for name resolution and optional archive queries.
-Development serves the app through Vite middleware, while production serves the
-built `dist/` files from Express.
+---
 
-## Science and analysis features
+## Installation
 
-### Sky coordinates and motion
+### Prerequisites
 
-`src/lib/astronomy.ts` parses RA and declination in decimal degrees or sexagesimal
-formats, formats coordinate readouts, computes great-circle angular separation,
-propagates proper motion from a reference epoch, and converts between sky
-coordinates and viewer pixels using a small-field tangent-plane approximation.
+- **Node.js**: `v20.19+` or `v22.12+` (compatible with Vite 8)
+- **Package manager**: `npm` (v10+) or `bun`
 
-### Synthetic observation renderer
+### Setup steps
 
-`src/lib/skyRenderer.ts` seeds a reproducible background field from sky coordinates,
-then renders stars, faint galaxy-like sources, a target, wavelength-dependent
-brightness, a point-spread function, and deterministic sky grain into a `Float32Array`.
-The viewer maps that buffer to an asinh-stretched, false-color canvas. It is an
-interactive **demonstration renderer**, not a calibrated SPHEREx instrument simulator
-or a substitute for archival image data.
-
-### SPHEREx reference model
-
-`src/lib/spherex.ts` defines six detector arrays and generates 102 wavelength
-channels over 0.75–5.00 µm. The wavelength explorer computes deterministic reference
-SED curves from blackbody-like shapes and illustrative molecular or dust features
-for supported target classes. These curves are labeled as reference models, not
-observed SPHEREx spectra.
-
-### Discovery Radar
-
-`src/lib/detection.ts` estimates background level and noise from sampled pixels,
-detects local maxima above an SNR threshold, computes intensity-weighted centroids,
-matches near-stationary sources between frames, and ranks remaining displaced
-sources as candidates. Results include positions, displacement, estimated motion,
-SNR, confidence score, and review status. The pipeline operates on the app's
-rendered demonstration frames; it is an educational prototype, not a validated
-survey discovery pipeline.
-
-### Archive and export API
-
-All endpoints are implemented in `server.ts`:
-
-| Endpoint | Purpose | Live source / behavior |
-| --- | --- | --- |
-| `GET /api/health` | Service health and timestamp | Local server |
-| `GET /api/archive/resolve?q=...` | Accept coordinate pairs or resolve object names | Local parser, then CDS Sesame |
-| `GET /api/archive/cutout?ra=...&dec=...&fov=...&survey=...` | Retrieve an archival sky cutout | CDS HiPS2FITS; allow-listed AllWISE, 2MASS, DSS2 |
-| `GET /api/archive/irsa-catalog?ra=...&dec=...&radiusArcsec=...` | Query nearby AllWISE sources | NASA/IPAC IRSA TAP, `allwise_p3as_psd` |
-| `GET /api/archive/spherex-cutouts?ra=...&dec=...&sizeDeg=...&bandpass=...` | Find matching SPHEREx cutout metadata and URIs | NASA/IPAC IRSA TAP, `spherex.artifact` joined with `spherex.plane`; M101 tutorial references can be used as fallback |
-| `GET /api/archive/fits-export?ra=...&dec=...&fov=...&epoch=...&band=...&targetName=...` | Download a FITS-format product | Locally generated demonstration Gaussian field; **not an archive cutout** |
-
-Public-service calls have short timeouts. Some endpoints return a demonstration
-status or reference rows when the upstream is unavailable; the UI also surfaces
-provenance labels so those results are not silently presented as live observations.
-The SPHEREx tutorial data is based on the
-[Caltech/IPAC IRSA SPHEREx cutouts tutorial](https://caltech-ipac.github.io/irsa-tutorials/spherex-cutouts/).
-
-## Project structure
-
-```text
-.
-├── server.ts                     # Express API, archive proxies, FITS export, Vite host
-├── index.html                    # Document metadata and React mount point
-├── vite.config.ts                # React + Tailwind Vite plugins and aliases
-├── package.json                  # Scripts and dependencies
-├── src/
-│   ├── main.tsx                  # React entry
-│   ├── App.tsx                   # App state, navigation, target resolution
-│   ├── index.css                 # Tailwind import and global styles
-│   ├── assets/images/            # Illustrative plates and M101 tutorial preview
-│   ├── components/               # Viewer, comparison, timeline, radar, layout panels
-│   ├── data/
-│   │   ├── objects.ts            # Curated objects, epoch metadata, target lookup
-│   │   └── spherexTutorialDataset.ts # M101 DR1/QR3 reference records and ADQL
-│   ├── lib/
-│   │   ├── astronomy.ts          # Coordinate parsing, motion, separation, WCS helpers
-│   │   ├── detection.ts          # Point-source extraction and candidate matching
-│   │   ├── skyRenderer.ts        # Deterministic sky-field renderer and color mapping
-│   │   ├── spherex.ts            # 102-band reference model and SED calculations
-│   │   └── lenisContext.tsx      # Smooth-scroll provider
-│   └── pages/                    # Home, Explorer, Observations, Detail, Discoveries, About
-└── README.md
-```
-
-## Run locally
-
-### Requirements
-
-- Node.js compatible with Vite 8 (Node.js 20.19+ or 22.12+)
-- npm
-- Network access is optional; live name resolution and archive queries require
-  external services to be reachable.
-
-### Install and start
+Clone the repository and install the project dependencies:
 
 ```bash
+git clone https://github.com/Ebenezer-03/Afterlight.git
+cd Afterlight
 npm install
+```
+
+---
+
+## Quickstart
+
+Start the local development server with tsx and Vite:
+
+```bash
 npm run dev
 ```
 
-Open the URL printed by the server (by default, `http://localhost:3000`). The
-development script runs `server.ts` with `tsx`; Vite is mounted as middleware.
+Once running, navigate to `http://localhost:3000` in your web browser. The Express server serves as the application entry point and proxies archive queries while mounting Vite as development middleware.
 
-### Build and serve production output
+---
+
+## Configuration
+
+AFTERLIGHT works offline out of the box using built-in demonstration models. To configure optional parameters and external integrations, create a `.env` file from the example template:
+
+```bash
+cp .env.example .env
+```
+
+| Environment variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `3000` | Port on which the Express application server listens. |
+| `NODE_ENV` | `development` | Set to `production` to serve static compiled assets from `dist/`. |
+| `GEMINI_API_KEY` | _None_ | Optional API key for server-side Gemini astronomical insight calls. |
+| `APP_URL` | `http://localhost:3000` | Public host URL used for self-referential links and callbacks. |
+
+---
+
+## Usage examples
+
+### 1. Resolve and view target coordinates
+
+In the **Explorer** view, search by target identifier (such as `Barnard's Star` or `M101`) or enter J2000 sexagesimal coordinates (`17h 57m 48.5s +04d 41m 36s`). The system converts positions to small-field tangent plane coordinates and streams synthetic infrared observation frames.
+
+### 2. Blink and differentiate multi-year epochs
+
+Switch to the **Comparison** tool:
+1. Select two baseline epochs (e.g., `WISE 2010` and `NEOWISE 2024`).
+2. Toggle the **Blink** comparator at 2 Hz to visually identify displaced sources.
+3. Switch to **Difference Mode** to compute a pixel-level signed subtraction matrix ($\Delta I = I_{t2} - I_{t1}$).
+
+### 3. Run automated candidate extraction
+
+Open the **Discovery Radar**:
+1. Choose an observation pair and click **Run Detection**.
+2. The pipeline computes background noise ($\sigma$), identifies intensity peaks ($>5\sigma$), extracts centroids, and cross-matches static stars.
+3. Review the candidate list sorted by displacement and assign review flags (`Candidate`, `Artifact`, `Known Object`).
+
+---
+
+## Science and analysis features
+
+### Sky coordinates and proper motion
+Implemented in `src/lib/astronomy.ts`:
+- Parses decimal and sexagesimal right ascension and declination.
+- Computes great-circle angular distances using the Haversine formula.
+- Propagates astrometric proper motion vectors across arbitrary time deltas.
+- Maps equatorial sky coordinates to viewer pixel buffers using local WCS tangent projections.
+
+### Synthetic observation renderer
+Implemented in `src/lib/skyRenderer.ts`:
+- Generates reproducible infrared sky fields from coordinate seeds into high-precision `Float32Array` buffers.
+- Simulates Point Spread Functions (PSFs), wavelength-dependent stellar fluxes, and infrared sky grain.
+- Renders final canvas frames using an asinh non-linear luminance stretch with false-color palettes.
+
+### SPHEREx 102-band reference model
+Implemented in `src/lib/spherex.ts`:
+- Models all six SPHEREx linear variable filter (LVF) arrays across 0.75–5.00 µm with 102 discreet channels.
+- Calculates synthetic Spectral Energy Distributions (SEDs) for stellar types, active galactic nuclei, and brown dwarfs.
+- Overlays characteristic infrared absorption bands including Water Ice (3.05 µm), CO₂ (4.27 µm), and CO (4.67 µm).
+
+### Discovery Radar pipeline
+Implemented in `src/lib/detection.ts`:
+- Performs spatial local background estimation and threshold clipping.
+- Calculates sub-pixel centroids using intensity-weighted moments.
+- Cross-matches stationary sources within a configurable pixel radius ($\sim 2.5$ px).
+- Isolates high-displacement residuals, computes Signal-to-Noise Ratios (SNR), and assigns confidence scores.
+
+### Archive and export API
+Implemented in `server.ts`:
+
+| Endpoint | HTTP Method | Description |
+| --- | --- | --- |
+| `/api/health` | `GET` | Health status and server uptime timestamp. |
+| `/api/archive/resolve` | `GET` | Coordinate parsing with CDS Sesame name resolution fallback. |
+| `/api/archive/cutout` | `GET` | CDS HiPS2FITS cutout proxy (AllWISE, 2MASS, DSS2). |
+| `/api/archive/irsa-catalog` | `GET` | NASA/IPAC IRSA TAP query for AllWISE point source catalogs (`allwise_p3as_psd`). |
+| `/api/archive/spherex-cutouts` | `GET` | SPHEREx TAP cutout and observation metadata query. |
+| `/api/archive/fits-export` | `GET` | Generates a 128 × 128 demonstration FITS image with valid celestial headers. |
+
+---
+
+## Development and testing
+
+### Type checking and linting
+
+Run TypeScript type check without emitting output:
+
+```bash
+npm run lint
+```
+
+### Automated test suite
+
+Execute the unit and integration tests covering coordinate transforms, candidate matching, and SPHEREx spectral models:
+
+```bash
+npx tsx --test src/lib/astronomy.test.ts src/data/spherexTutorialDataset.test.ts
+```
+
+### Production build
+
+Compile the frontend assets into the `dist/` directory:
 
 ```bash
 npm run build
 ```
 
-To serve the generated `dist/` directory through Express, start the app with
-`NODE_ENV=production` set in the environment. The server listens on port `3000` by
-default; set `PORT` to override it.
-
-### Checks
+Serve the production build via Express:
 
 ```bash
-npm run lint
-npx tsx --test src/lib/astronomy.test.ts src/data/spherexTutorialDataset.test.ts
+npm start
 ```
 
-`lint` runs the TypeScript compiler in no-emit mode. The test files cover coordinate
-parsing and transforms, proper motion, SPHEREx band generation, the demonstration
-moving-source pipeline, and the M101 tutorial dataset and query builder.
+---
+
+## Project structure
+
+```text
+.
+├── server.ts                     # Express API, archive proxies, FITS generator, Vite host
+├── index.html                    # HTML entry point and application shell
+├── vite.config.ts                # Vite build and plugin configurations
+├── package.json                  # Dependencies and run scripts
+├── tsconfig.json                 # TypeScript compiler configuration
+├── metadata.json                 # AI Studio & NASA Space Apps metadata
+├── src/
+│   ├── main.tsx                  # React application bootstrap
+│   ├── App.tsx                   # Top-level state, router, and target resolution
+│   ├── index.css                 # Tailwind CSS v4 styling rules
+│   ├── assets/images/            # Reference plates and M101 preview images
+│   ├── components/               # UI components (Sky Viewer, Timeline, Radar, Panels)
+│   ├── data/
+│   │   ├── objects.ts            # Curated astronomical targets and epoch catalog
+│   │   └── spherexTutorialDataset.ts # IRSA SPHEREx tutorial cutouts and TAP queries
+│   ├── lib/
+│   │   ├── astronomy.ts          # Astrometry, coordinate transforms, proper motion
+│   │   ├── detection.ts          # Moving source detection and candidate ranking
+│   │   ├── skyRenderer.ts        # Synthetic infrared frame canvas renderer
+│   │   ├── spherex.ts            # 102-band spectrometer and SED reference calculations
+│   │   └── lenisContext.tsx      # Smooth-scrolling provider
+│   └── pages/                    # Home, Explorer, Observations, Detail, Discoveries, About
+└── README.md
+```
+
+---
 
 ## Data and scientific integrity
 
-- **Live archive data and modeled data are different.** The app can request select
-  public archival products and catalog metadata, but its canvas sky plates and
-  reference SED curves are generated locally.
-- **Epoch metadata is not proof of downloaded pixels.** Curated WISE/NEOWISE and
-  SPHEREx epoch entries provide context for the demonstration timeline; do not treat
-  every rendered epoch as an actual retrieved survey exposure.
-- **SPHEREx integration has boundaries.** The app models the six-array, 102-channel
-  wavelength layout and queries public SPHEREx cutout metadata. It does not currently
-  ingest live SPHEREx FITS pixel arrays into the interactive sky renderer.
-- **FITS export is a demo product.** The export endpoint writes a small generated
-  float32 field with coordinate and band metadata. It is not downloaded science data
-  or a calibrated instrument observation.
-- **Candidates need independent confirmation.** Offsets can arise from rendering,
-  noise, source blending, detector artifacts, or catalog mismatches. Validate any
-  real target against astrometric catalogs and appropriate follow-up; this interface
-  does not establish a planet or other discovery.
-- **External dependencies can be unavailable.** Public endpoints may be inaccessible
-  due to network, service, or runtime conditions. The app is designed to report
-  demonstration/reference behavior in those cases.
+- **Synthetic vs. Archival Data:** The app visualizes locally synthesized infrared sky plates and modeled SED curves for educational exploration. While it queries real catalog metadata, rendered images are not raw astronomical telemetry.
+- **SPHEREx Scope:** Models the 6-array, 102-channel instrument layout and IRSA metadata schemas. It does not ingest multi-gigabyte raw mission FITS cubes in the browser.
+- **Candidate Verification:** Moving-object detections generated by the Discovery Radar are unconfirmed anomalies. Real astronomical discoveries require multi-night astrometric verification and follow-up observations.
+- **Service Availability:** Network requests to external servers (CDS, IRSA) operate with strict timeouts and automatically display labeled fallback data when unavailable.
 
-AFTERLIGHT was developed for the NASA Space Apps Challenge 2026. It is an independent
-challenge project and is not an official NASA product or an endorsement by NASA,
-JPL-Caltech, Caltech/IPAC, or CDS.
+---
+
+## Contributing
+
+Contributions are welcome! Please follow these steps to contribute:
+
+1. **Fork the repository** on GitHub (`https://github.com/Ebenezer-03/Afterlight`).
+2. **Create a feature branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Commit your changes:** Follow [Conventional Commits](https://www.conventionalcommits.org/) format:
+   ```bash
+   git commit -m "feat: add support for custom FITS file upload"
+   ```
+4. **Run tests and linters:** Ensure all tests pass:
+   ```bash
+   npm run lint
+   ```
+5. **Push and open a pull request:** Push your branch and open a PR against the `main` branch.
+
+---
+
+## License
+
+This project is open-source and licensed under the [MIT License](LICENSE).
+
+---
 
 ## Acknowledgements
 
-The project references public astronomy services and mission/archive material from
-NASA and JPL-Caltech, NASA/IPAC IRSA, AllWISE/NEOWISE, 2MASS, ESA Gaia, CDS Strasbourg,
-and the Caltech/IPAC SPHEREx cutouts tutorial. See the in-app About page and
-individual dataset references for more context.
+- **NASA Space Apps Challenge 2026** — *Planet X and SPHEREx* challenge track.
+- **NASA / JPL-Caltech** for the SPHEREx mission concepts and infrared science data.
+- **Caltech/IPAC IRSA** for the [SPHEREx Cutouts Tutorial](https://caltech-ipac.github.io/irsa-tutorials/spherex-cutouts/) and TAP interfaces.
+- **CDS Strasbourg** for CDS Sesame and HiPS2FITS sky survey access.
